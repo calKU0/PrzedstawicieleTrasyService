@@ -12,12 +12,14 @@ using System.Configuration;
 using System.IO;
 using System.Threading;
 using System.Timers;
+using Renci.SshNet;
 
 namespace GaskaPrzedstawicieleTrasyService
 {
     public partial class Service1 : ServiceBase
     {
         DataTable dtWizyty = new DataTable();
+        DataTable dtKlienci = new DataTable();
         System.Timers.Timer timer = new System.Timers.Timer();
         string sftpHost = ConfigurationManager.AppSettings["SftpHostname"];
         int sftpPort = int.Parse(ConfigurationManager.AppSettings["SftpPort"]);
@@ -28,6 +30,7 @@ namespace GaskaPrzedstawicieleTrasyService
         int odpytujCoMinut = int.Parse(ConfigurationManager.AppSettings["Co ile minut odpytywac"]);
         string czyJuzWykonano = "";
         private static AutoResetEvent autoResetEvent = new AutoResetEvent(false);
+        string data;
         SqlConnection connection;
 
         public Service1()
@@ -63,27 +66,49 @@ namespace GaskaPrzedstawicieleTrasyService
 
         public void OnTimer(object sender, ElapsedEventArgs args)
         {
-            string aktualnaGodzina = DateTime.Now.Hour.ToString();
-            string data = DateTime.Now.ToShortDateString();
-
-            if (aktualnaGodzina == godzinaWysylki && czyJuzWykonano != data) // jesli juz wykonalem operacje o zadanej godzinie w dzisiejszym dniu to juz jej nie wykonam ponownie
+            try
             {
-                Thread threadWysylka = new Thread(WysylkaWizyt);
-                threadWysylka.Start();
-                czyJuzWykonano = data;
+                string aktualnaGodzina = DateTime.Now.Hour.ToString();
+                string data = DateTime.Now.ToShortDateString();
+
+                if (aktualnaGodzina == godzinaWysylki && czyJuzWykonano != data) // jesli juz wykonalem operacje o zadanej godzinie w dzisiejszym dniu to juz jej nie wykonam ponownie
+                {
+                    Thread threadWysylka = new Thread(Wysylka);
+                    threadWysylka.Start();
+                    czyJuzWykonano = data;
+                }
             }
+            catch (Exception ex) { ZapiszLog(ex.ToString()); }
+
+
         }
 
         private void Watek()
         {
-            timer.Interval = odpytujCoMinut * 60000;
-            timer.Elapsed += new ElapsedEventHandler(this.OnTimer);
-            timer.Start();
+            try
+            {
+                timer.Interval = odpytujCoMinut * 60000;
+                timer.Elapsed += new ElapsedEventHandler(this.OnTimer);
+                timer.Start();
 
-            autoResetEvent.WaitOne(); // czekam na sygnał zatrzymania wątku
+                autoResetEvent.WaitOne(); // czekam na sygnał zatrzymania wątku
+            }
+            catch (Exception ex) { ZapiszLog(ex.ToString()); }
         }
 
-        public void WysylkaWizyt()
+        public void Wysylka()
+        {
+            try
+            {
+                //1. Wysyłamy plik z Wizytami
+                WyslijWizyty();
+                //2. Wysyłamy plik z Klientami
+                WyslijKlientow();
+            }
+            catch (Exception ex) {ZapiszLog(ex.ToString()); }
+        }
+
+        public void WyslijWizyty()
         {
             try
             {
@@ -127,52 +152,121 @@ namespace GaskaPrzedstawicieleTrasyService
                     connection.Close();
                 }
             }
-            catch { ZapiszLog("Problem z pobraniem wizyt z bazy danych"); }
+            catch {ZapiszLog("Problem z pobraniem wizyt z bazy danych"); }
 
+            DateTime dzis = DateTime.Now;
+            data = dzis.ToString("yyyyMMddHHmmss");
+            string pathWizyta = AppDomain.CurrentDomain.BaseDirectory + @"Wizyty";
+            string filePathWizyta = AppDomain.CurrentDomain.BaseDirectory + @"Wizyty\import_wizyta_" + data + ".csv";
+            GenerujCSV(pathWizyta, filePathWizyta, dtWizyty);
+            WyslijPlik(filePathWizyta, "import_wizyta_" + data + ".csv");
+        }
+
+        public void WyslijKlientow()
+        {
             try
             {
-                DateTime dzis = DateTime.Now;
-                string data = dzis.ToString("yyyyMMddHHmmss");
-                string path = AppDomain.CurrentDomain.BaseDirectory + @"Wizyty";
-                string filePath = AppDomain.CurrentDomain.BaseDirectory + @"Wizyty\import_wizyta_" + data + ".csv";
+                using (connection = new SqlConnection(ConfigurationManager.ConnectionStrings["GaskaConnectionString"].ConnectionString))
+                {
+                    string query = @"
+                                    DECLARE @maxRandom INT = 5
+                                    DECLARE @minRandom INT = 1
+                                    SELECT [Id Klient],[Nazwa],[Kraj],[Kod],[Miejscowość],[Ulica],[Numer],[ID PH], CAST(ABS(CHECKSUM(NEWID())) % (@maxRandom-@minRandom) AS INT) + @minRandom as [Ilość odwiedzin] FROM OPENQUERY(gonet,
+                                    'select distinct
+                                    k.id ""ID Klient""
+                                    ,k.PELNANAZWA ""Nazwa""
+                                    ,s1.NAZWA ""Kraj""
+                                    ,k.KODPOCZTOWY ""Kod""
+                                    ,s2.NAZWA ""Miejscowość""
+                                    ,k.Adres ""Ulica""
+                                    ,k.ADRESDOM ""Numer""
+                                    ,k.IDMANAGERA ""ID PH""
+
+
+                                    from kontrahent k
+                                    join slownik s1 on s1.id = k.idkraj
+                                    join slownik s2 on s2.id = k.idmiasto
+                                    where k.usuniety = 0 and k.arc = 0
+                                    and k.id between 16486 and 17786
+                                    and k.IDMANAGERA in (51,58,59,68)
+                                    '
+                                    )";
+                    connection.Open();
+                    SqlCommand selectcommand = new SqlCommand(query, connection);
+                    using (SqlDataAdapter da = new SqlDataAdapter(selectcommand))
+                    {
+                        da.Fill(dtKlienci);
+                    }
+                    connection.Close();
+                }
+            }
+            catch (Exception ex) { ZapiszLog("Problem z pobraniem klientów z bazy danych\n" + ex); }
+
+            DateTime dzis = DateTime.Now;
+            data = dzis.ToString("yyyyMMddHHmmss");
+            string pathKlientci = AppDomain.CurrentDomain.BaseDirectory + @"Klienci";
+            string filePathKlientci = AppDomain.CurrentDomain.BaseDirectory + @"Klienci\import_klient_" + data + ".csv";
+            GenerujCSV(pathKlientci, filePathKlientci, dtKlienci);
+            WyslijPlik(filePathKlientci, "import_klient_" + data + ".csv");
+        }
+
+        public void GenerujCSV(string path, string filePath, DataTable dt)
+        {
+            try
+            {
                 if (!Directory.Exists(path))
                 {
                     Directory.CreateDirectory(path);
                 }
                 using (StreamWriter writer = new StreamWriter(filePath))
                 {
-                    for (int i = 0; i < dtWizyty.Columns.Count; i++)
+                    for (int i = 0; i < dt.Columns.Count; i++)
                     {
-                        writer.Write(dtWizyty.Columns[i]);
-
-                        if (i < dtWizyty.Columns.Count - 1)
+                        writer.Write(dt.Columns[i]);
+                        if (i < dt.Columns.Count - 1)
                         {
-                            writer.Write(",");
+                            writer.Write("|");
                         }
                     }
-
                     writer.WriteLine();
-                    foreach (DataRow row in dtWizyty.Rows)
+                    foreach (DataRow row in dt.Rows)
                     {
-                        for (int i = 0; i < dtWizyty.Columns.Count; i++)
+                        for (int i = 0; i < dt.Columns.Count; i++)
                         {
                             writer.Write(row[i].ToString());
-
-                            if (i < dtWizyty.Columns.Count - 1)
+                            if (i < dt.Columns.Count - 1)
                             {
-                                writer.Write(",");
+                                writer.Write("|");
                             }
                         }
-
                         writer.WriteLine();
                     }
-                    ZapiszLog("Plik import_wizyta_" + data + ".csv został wygenerowany pomyślnie");
                 }
+                ZapiszLog("Plik " + filePath + " został wygenerowany pomyślnie");
             }
-            catch { ZapiszLog("Problem z zapisem pliku Wizyt do csv"); }
+            catch (Exception ex) { ZapiszLog("Problem z zapisem do pliku " + filePath + "\n"+ ex); }
         }
 
-        private void ZapiszLog(string tekst)
+        public void WyslijPlik(string filePath, string fileName)
+        {
+            try
+            {
+                using (SftpClient sftpClient = new SftpClient(sftpHost, sftpPort, sftpUsername, sftpPassword))
+                {
+                    sftpClient.Connect();
+                    sftpClient.ChangeDirectory(sftpFolderPath);
+                    using (FileStream fileStream = new FileStream(filePath, FileMode.Open))
+                    {
+                        sftpClient.UploadFile(fileStream, fileName);
+                    }
+                    sftpClient.Disconnect();
+                }
+                ZapiszLog("Plik " + fileName + " został wysłany na serwer sftp pomyślnie");
+            }
+            catch(Exception ex) { ZapiszLog("Problem z wysyłką pliku " + filePath + "na SFTP\n" + ex); }
+        }
+
+        public void ZapiszLog(string tekst)
         {
             DateTime today = DateTime.Today;
             string path = AppDomain.CurrentDomain.BaseDirectory + @"Logs";
