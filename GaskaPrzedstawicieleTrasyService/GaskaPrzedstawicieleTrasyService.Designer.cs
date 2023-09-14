@@ -1,6 +1,6 @@
 ﻿namespace GaskaPrzedstawicieleTrasyService
 {
-    partial class Service1
+    partial class GaskaPrzedstawicieleTrasyService
     {
         /// <summary> 
         /// Required designer variable.

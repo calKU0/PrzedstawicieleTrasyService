@@ -16,7 +16,7 @@ using Renci.SshNet;
 
 namespace GaskaPrzedstawicieleTrasyService
 {
-    public partial class Service1 : ServiceBase
+    public partial class GaskaPrzedstawicieleTrasyService : ServiceBase
     {
         DataTable dtWizyty = new DataTable();
         DataTable dtKlienci = new DataTable();
@@ -33,7 +33,7 @@ namespace GaskaPrzedstawicieleTrasyService
         string data;
         SqlConnection connection;
 
-        public Service1()
+        public GaskaPrzedstawicieleTrasyService()
         {
             InitializeComponent();
         }
@@ -140,6 +140,8 @@ namespace GaskaPrzedstawicieleTrasyService
 	                                    AND KD.ARC = 0
 	                                    AND KO.USUNIETY = 0
 	                                    AND KO.ARC = 0
+                                        AND kh.id between 16000 and 33000
+                                        AND kh.IDMANAGERA in (51,58,59,68)
 	                                    AND cast(Z.TERMINROZPOCZECIA as date) = cast(''NOW'' as date) - 1 
 	                                    '
 	                                    )";
@@ -169,26 +171,25 @@ namespace GaskaPrzedstawicieleTrasyService
                 using (connection = new SqlConnection(ConfigurationManager.ConnectionStrings["GaskaConnectionString"].ConnectionString))
                 {
                     string query = @"
-                                    DECLARE @maxRandom INT = 5
-                                    DECLARE @minRandom INT = 1
-                                    SELECT [Id Klient],[Nazwa],[Kraj],[Kod],[Miejscowość],[Ulica],[Numer],[ID PH], CAST(ABS(CHECKSUM(NEWID())) % (@maxRandom-@minRandom) AS INT) + @minRandom as [Ilość odwiedzin] FROM OPENQUERY(gonet,
+                                    SELECT [Id Klient],[Nazwa],[Kraj],[Kod],[Miejscowość],[Ulica],[Numer],[ID PH], [Ilość Odwiedzin] FROM OPENQUERY(gonet,
                                     'select distinct
-                                    k.id ""ID Klient""
-                                    ,k.PELNANAZWA ""Nazwa""
+                                    kh.id ""ID Klient""
+                                    ,kh.PELNANAZWA ""Nazwa""
                                     ,s1.NAZWA ""Kraj""
-                                    ,k.KODPOCZTOWY ""Kod""
+                                    ,kh.KODPOCZTOWY ""Kod""
                                     ,s2.NAZWA ""Miejscowość""
-                                    ,k.Adres ""Ulica""
-                                    ,k.ADRESDOM ""Numer""
-                                    ,k.IDMANAGERA ""ID PH""
+                                    ,kh.Adres ""Ulica""
+                                    ,kh.ADRESDOM ""Numer""
+                                    ,kh.IDMANAGERA ""ID PH""
+                                    ,2 ""Ilość Odwiedzin""
 
 
-                                    from kontrahent k
-                                    join slownik s1 on s1.id = k.idkraj
-                                    join slownik s2 on s2.id = k.idmiasto
-                                    where k.usuniety = 0 and k.arc = 0
-                                    and k.id between 16486 and 17786
-                                    and k.IDMANAGERA in (51,58,59,68)
+                                    from kontrahent kh
+                                    join slownik s1 on s1.id = kh.idkraj
+                                    join slownik s2 on s2.id = kh.idmiasto
+                                    where kh.usuniety = 0 and kh.arc = 0
+                                    AND kh.id between 16000 and 33000
+                                    and kh.IDMANAGERA in (51,58,59,68)
                                     '
                                     )";
                     connection.Open();
@@ -204,10 +205,11 @@ namespace GaskaPrzedstawicieleTrasyService
 
             DateTime dzis = DateTime.Now;
             data = dzis.ToString("yyyyMMddHHmmss");
-            string pathKlientci = AppDomain.CurrentDomain.BaseDirectory + @"Klienci";
-            string filePathKlientci = AppDomain.CurrentDomain.BaseDirectory + @"Klienci\import_klient_" + data + ".csv";
-            GenerujCSV(pathKlientci, filePathKlientci, dtKlienci);
-            WyslijPlik(filePathKlientci, "import_klient_" + data + ".csv");
+            string pathKlienci = AppDomain.CurrentDomain.BaseDirectory + @"Klienci";
+            string filePathKlienci = AppDomain.CurrentDomain.BaseDirectory + @"Klienci\import_klient_" + data + ".csv";
+
+            GenerujCSV(pathKlienci, filePathKlienci, dtKlienci);
+            WyslijPlik(filePathKlienci, "import_klient_" + data + ".csv");
         }
 
         public void GenerujCSV(string path, string filePath, DataTable dt)

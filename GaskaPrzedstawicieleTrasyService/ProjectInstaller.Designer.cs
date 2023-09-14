@@ -38,9 +38,10 @@
             // 
             // serviceInstaller1
             // 
-            this.serviceInstaller1.Description = "Przesyła pliki na sftp RoadPlus";
+            this.serviceInstaller1.DelayedAutoStart = true;
+            this.serviceInstaller1.Description = "Usługa do przesyłania plików na sftp RoadPlus";
             this.serviceInstaller1.DisplayName = "GaskaPrzedstawicieleTrasy";
-            this.serviceInstaller1.ServiceName = "Service1";
+            this.serviceInstaller1.ServiceName = "GaskaPrzedstawicieleTrasyService";
             // 
             // ProjectInstaller
             // 
