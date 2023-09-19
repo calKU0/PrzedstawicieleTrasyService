@@ -73,6 +73,8 @@ namespace GaskaPrzedstawicieleTrasyService
 
                 if (aktualnaGodzina == godzinaWysylki && czyJuzWykonano != data) // jesli juz wykonalem operacje o zadanej godzinie w dzisiejszym dniu to juz jej nie wykonam ponownie
                 {
+                    dtWizyty.Clear();
+                    dtKlienci.Clear();
                     Thread threadWysylka = new Thread(Wysylka);
                     threadWysylka.Start();
                     czyJuzWykonano = data;
