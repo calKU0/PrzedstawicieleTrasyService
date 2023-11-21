@@ -117,16 +117,18 @@ namespace GaskaPrzedstawicieleTrasyService
                 using (connection = new SqlConnection(ConfigurationManager.ConnectionStrings["GaskaConnectionString"].ConnectionString))
                 {
                     string query = @"SELECT CONVERT(date, [Data rozpoczecia]) as Data
-                                    ,[ID Wizyty]
-                                    ,[ID PH]
-                                    ,[ID Klient]
-                                    ,cast([Data rozpoczecia] as time) as [Godzina rozpoczecia]
-                                    ,cast([Data zakonczenia] as time) as[Godzina zakonczenia]
+,[ID Wizyty]
+,[ID PH]
+,[ID Klient]
+,[Klient Nazwa]
+,cast([Data rozpoczecia] as time) as [Godzina rozpoczecia]
+,cast([Data zakonczenia] as time) as[Godzina zakonczenia]
 
                                     FROM OPENQUERY(gonet,
 	                                    'Select
 	                                    Z.ID ""ID Wizyty""
-	                                    ,KH.ID ""ID Klient""
+                                        ,KH.ID ""ID Klient""
+	                                    ,KH.SKROTNAZWY ""Klient Nazwa""
 	                                    ,O.ID ""ID PH""
 	                                    ,Z.TERMINROZPOCZECIA ""Data rozpoczecia""
 	                                    ,Z.TERMINZAKONCZENIA ""Data zakonczenia""
@@ -142,11 +144,12 @@ namespace GaskaPrzedstawicieleTrasyService
 	                                    AND KD.ARC = 0
 	                                    AND KO.USUNIETY = 0
 	                                    AND KO.ARC = 0
-                                        AND kh.id between 16000 and 33000
-                                        AND kh.IDMANAGERA in (51,58,59,68)
-	                                    AND cast(Z.TERMINROZPOCZECIA as date) = cast(''NOW'' as date) - 1 
-	                                    '
-	                                    )";
+                                        AND kh.IDMANAGERA in (51,58,59,68) -- Przedstawiciele handlowi
+	                                    AND cast(KO.DATAAKCJI as date) = cast(''NOW'' as date) - 1 -- Data zamknięcia wczoraj
+										AND KO.IDTYPAKCJI = 4 -- Wizyta'
+	                                    )
+
+		SELECT * FROM OPENQUERY(gonet,'SELECT * FROM KORESPONDENCJA K WHERE K.ID IN (606591,611831)')";
                     connection.Open();
                     SqlCommand selectcommand = new SqlCommand(query, connection);
                     using (SqlDataAdapter da = new SqlDataAdapter(selectcommand))
@@ -173,27 +176,49 @@ namespace GaskaPrzedstawicieleTrasyService
                 using (connection = new SqlConnection(ConfigurationManager.ConnectionStrings["GaskaConnectionString"].ConnectionString))
                 {
                     string query = @"
-                                    SELECT [Id Klient],[Nazwa],[Kraj],[Kod],[Miejscowość],[Ulica],[Numer],[ID PH], [Ilość Odwiedzin] FROM OPENQUERY(gonet,
-                                    'select distinct
-                                    kh.id ""ID Klient""
-                                    ,kh.PELNANAZWA ""Nazwa""
-                                    ,s1.NAZWA ""Kraj""
-                                    ,kh.KODPOCZTOWY ""Kod""
-                                    ,s2.NAZWA ""Miejscowość""
-                                    ,kh.Adres ""Ulica""
-                                    ,kh.ADRESDOM ""Numer""
-                                    ,kh.IDMANAGERA ""ID PH""
-                                    ,2 ""Ilość Odwiedzin""
+select distinct
+knt_gidnumer as [Id Klient]
+,knt_akronim as [Nazwa]
+,knt_kraj as [Kraj]
+,knt_kodp as [Kod]
+,knt_miasto as [Miejscowość]
+,knt_ulica as [Ulica]
+,case when KtO_PrcNumer = 382 then 51
+when KtO_PrcNumer = 1491 then 68
+when KtO_PrcNumer = 1426 then 59
+else 58 end as [ID PH]
+,ilo.atr_wartosc as [Ilość Odwiedzin]
+
+from cdn.KntKarty
+join cdn.Rejony on REJ_Id = KnT_RegionCRM
+join cdn.KntOpiekun on REJ_Id=KtO_KntNumer and KtO_Glowny = 0 and KtO_PrcNumer in (1425,1426,1491,382)
+join cdn.atrybuty ilo on Knt_GIDNumer=ilo.Atr_ObiNumer and ilo.Atr_OBITyp=32 AND ilo.Atr_OBISubLp=0 and ilo.atr_atkid = 459 and ilo.Atr_Wartosc <> 0 
+left join cdn.atrybuty co on Knt_GIDNumer=co.Atr_ObiNumer and co.Atr_OBITyp=32 AND co.Atr_OBISubLp=0 and co.atr_atkid = 470
+
+where co.Atr_Wartosc is NULL or co.Atr_Wartosc = 'TAK'
+UNION ALL
+select distinct
+kna_gidnumer as [Id Klient]
+,kna_akronim as [Nazwa]
+,kna_kraj as [Kraj]
+,kna_kodp as [Kod]
+,kna_miasto as [Miejscowość]
+,kna_ulica as [Ulica]
+,case when KtO_PrcNumer = 382 then 51
+when KtO_PrcNumer = 1491 then 68
+when KtO_PrcNumer = 1426 then 59
+else 58 end as [ID PH]
+,ilo.atr_wartosc as [Ilość Odwiedzin]
 
 
-                                    from kontrahent kh
-                                    join slownik s1 on s1.id = kh.idkraj
-                                    join slownik s2 on s2.id = kh.idmiasto
-                                    where kh.usuniety = 0 and kh.arc = 0
-                                    AND kh.id between 16000 and 33000
-                                    and kh.IDMANAGERA in (51,58,59,68)
-                                    '
-                                    )";
+from cdn.KntAdresy
+join cdn.Rejony on REJ_Id = KnA_RegionCRM
+join cdn.KntOpiekun on REJ_Id=KtO_KntNumer and KtO_Glowny = 0
+join cdn.PrcKarty on Prc_GIDNumer=KtO_PrcNumer
+join cdn.atrybuty ilo on KnA_GIDNumer=ilo.Atr_ObiNumer and ilo.atr_atkid = 459 and ilo.Atr_Wartosc <> 0
+left join cdn.atrybuty co on KnA_GIDNumer=co.Atr_ObiNumer and co.atr_atkid = 470
+
+where (co.Atr_Wartosc is NULL or co.Atr_Wartosc = 'TAK') and KnA_AdresBank = 1 and KtO_PrcNumer in (1425,1426,1491,382)";
                     connection.Open();
                     SqlCommand selectcommand = new SqlCommand(query, connection);
                     using (SqlDataAdapter da = new SqlDataAdapter(selectcommand))
