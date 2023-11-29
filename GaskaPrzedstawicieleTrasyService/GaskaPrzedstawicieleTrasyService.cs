@@ -1,13 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
 using System.Data;
 using System.Data.SqlClient;
-using System.Diagnostics;
-using System.Linq;
 using System.ServiceProcess;
-using System.Text;
-using System.Threading.Tasks;
 using System.Configuration;
 using System.IO;
 using System.Threading;
@@ -18,20 +12,28 @@ namespace GaskaPrzedstawicieleTrasyService
 {
     public partial class GaskaPrzedstawicieleTrasyService : ServiceBase
     {
-        DataTable dtWizyty = new DataTable();
-        DataTable dtKlienci = new DataTable();
-        System.Timers.Timer timer = new System.Timers.Timer();
-        string sftpHost = ConfigurationManager.AppSettings["SftpHostname"];
-        int sftpPort = int.Parse(ConfigurationManager.AppSettings["SftpPort"]);
-        string sftpUsername = ConfigurationManager.AppSettings["SftpUsername"];
-        string sftpPassword = ConfigurationManager.AppSettings["SftpPassword"];
-        string godzinaWysylki = ConfigurationManager.AppSettings["Godzina wysylki"];
-        string sftpFolderPath = ConfigurationManager.AppSettings["SftpFolderPath"];
-        int odpytujCoMinut = int.Parse(ConfigurationManager.AppSettings["Co ile minut odpytywac"]);
-        string czyJuzWykonano = "";
+        private DataTable dtWizyty = new DataTable();
+        private DataTable dtKlienci = new DataTable();
+        private System.Timers.Timer timer = new System.Timers.Timer();
+        private readonly string sftpHost = ConfigurationManager.AppSettings["SftpHostname"];
+        private readonly int sftpPort = int.Parse(ConfigurationManager.AppSettings["SftpPort"]);
+        private readonly string sftpUsername = ConfigurationManager.AppSettings["SftpUsername"];
+        private readonly string sftpPassword = ConfigurationManager.AppSettings["SftpPassword"];
+        private readonly string godzinaWysylki = ConfigurationManager.AppSettings["Godzina wysylki"];
+        private readonly string godzinaPobierania = ConfigurationManager.AppSettings["Godzina pobierania"];
+        private readonly string dzienPobierania = ConfigurationManager.AppSettings["Dzien pobierania"];
+        private readonly string sftpFolderPath = ConfigurationManager.AppSettings["SftpFolderPath"];
+        private readonly string sftpFolderOutcomingPath = ConfigurationManager.AppSettings["SftpFolderOutcomingPath"];
+        private readonly int odpytujCoMinut = int.Parse(ConfigurationManager.AppSettings["Co ile minut odpytywac"]);
+        private readonly string localDownloadPath = AppDomain.CurrentDomain.BaseDirectory + @"Plan";
+        private string czyJuzWykonano = "";
+        private string czyJuzPobrano = "";
+        private string data;
+        private SqlConnection connection;
         private static AutoResetEvent autoResetEvent = new AutoResetEvent(false);
-        string data;
-        SqlConnection connection;
+        private Thread threadPobieranie;
+        private Thread threadWysylka;
+        private Thread threadTimer;
 
         public GaskaPrzedstawicieleTrasyService()
         {
@@ -43,9 +45,8 @@ namespace GaskaPrzedstawicieleTrasyService
             ZapiszLog("Uruchomienie usługi");
             try
             {
-                Thread Wysylka = new Thread(Watek);
-                Wysylka.Start();
-
+                threadTimer = new Thread(Timer);
+                threadTimer.Start();
             }
             catch (Exception ex)
             {
@@ -62,6 +63,9 @@ namespace GaskaPrzedstawicieleTrasyService
                 connection.Close();
             }
             timer.Stop();
+            //if ((threadPobieranie.ThreadState & ThreadState.Running) == ThreadState.Running) { threadPobieranie.Abort(); }
+            //if ((threadWysylka.ThreadState & ThreadState.Running) == ThreadState.Running) { threadWysylka.Abort(); }
+            if ((threadTimer.ThreadState & ThreadState.Running) == ThreadState.Running) { threadTimer.Abort(); }
         }
 
         public void OnTimer(object sender, ElapsedEventArgs args)
@@ -75,17 +79,21 @@ namespace GaskaPrzedstawicieleTrasyService
                 {
                     dtWizyty.Clear();
                     dtKlienci.Clear();
-                    Thread threadWysylka = new Thread(Wysylka);
+                    threadWysylka = new Thread(Wysylka);
                     threadWysylka.Start();
                     czyJuzWykonano = data;
                 }
+
+                if (aktualnaGodzina == godzinaPobierania && System.DateTime.Now.DayOfWeek.ToString() == dzienPobierania && czyJuzPobrano != data)
+                {
+                    threadPobieranie = new Thread(Pobieranie);
+                    threadPobieranie.Start();
+                    czyJuzPobrano = data;
+                }
             }
             catch (Exception ex) { ZapiszLog(ex.ToString()); }
-
-
         }
-
-        private void Watek()
+        private void Timer()
         {
             try
             {
@@ -95,6 +103,7 @@ namespace GaskaPrzedstawicieleTrasyService
 
                 autoResetEvent.WaitOne(); // czekam na sygnał zatrzymania wątku
             }
+            catch (ThreadAbortException) {}
             catch (Exception ex) { ZapiszLog(ex.ToString()); }
         }
 
@@ -107,7 +116,19 @@ namespace GaskaPrzedstawicieleTrasyService
                 //2. Wysyłamy plik z Klientami
                 WyslijKlientow();
             }
-            catch (Exception ex) {ZapiszLog(ex.ToString()); }
+            catch (Exception ex) { ZapiszLog(ex.ToString()); }
+        }
+
+        public void Pobieranie()
+        {
+            try
+            {
+                //1. Pobieramy pliki
+                PobierzPliki();
+                //2. Tworzymy zadanie w GoNecie
+                UtworzZadaniaGoNet();
+            }
+            catch (Exception ex) { ZapiszLog(ex.ToString()); }
         }
 
         public void WyslijWizyty()
@@ -119,8 +140,8 @@ namespace GaskaPrzedstawicieleTrasyService
                     string query = @"SELECT CONVERT(date, [Data rozpoczecia]) as Data
 ,[ID Wizyty]
 ,[ID PH]
-,[ID Klient]
-,[Klient Nazwa]
+,Knt_GIDNumer as [ID Klient]
+,Knt_Akronim as [Klient Nazwa]
 ,cast([Data rozpoczecia] as time) as [Godzina rozpoczecia]
 ,cast([Data zakonczenia] as time) as[Godzina zakonczenia]
 
@@ -145,11 +166,10 @@ namespace GaskaPrzedstawicieleTrasyService
 	                                    AND KO.USUNIETY = 0
 	                                    AND KO.ARC = 0
                                         AND kh.IDMANAGERA in (51,58,59,68) -- Przedstawiciele handlowi
-	                                    AND cast(KO.DATAAKCJI as date) = cast(''NOW'' as date) - 1 -- Data zamknięcia wczoraj
-										AND KO.IDTYPAKCJI = 4 -- Wizyta'
+	                                    AND cast(KO.DATAAKCJI as date) >= cast(''NOW'' as date) - 1 -- Data zamknięcia wczoraj
+										AND KO.IDTYPAKCJI = 4 -- Wizyta '
 	                                    )
-
-		SELECT * FROM OPENQUERY(gonet,'SELECT * FROM KORESPONDENCJA K WHERE K.ID IN (606591,611831)')";
+										join cdn.KntKarty on [Klient Nazwa] = Knt_Akronim";
                     connection.Open();
                     SqlCommand selectcommand = new SqlCommand(query, connection);
                     using (SqlDataAdapter da = new SqlDataAdapter(selectcommand))
@@ -295,6 +315,97 @@ where (co.Atr_Wartosc is NULL or co.Atr_Wartosc = 'TAK') and KnA_AdresBank = 1 a
             catch(Exception ex) { ZapiszLog("Problem z wysyłką pliku " + filePath + "na SFTP\n" + ex); }
         }
 
+        void PobierzPliki()
+        {
+            using (var client = new SftpClient(sftpHost, sftpPort, sftpUsername, sftpPassword))
+            {
+                try
+                {
+                    client.Connect();
+
+                    //Pobieranie wszystkich plików
+                    var files = client.ListDirectory(sftpFolderOutcomingPath);
+
+                    if (!Directory.Exists(localDownloadPath))
+                    {
+                        Directory.CreateDirectory(localDownloadPath);
+                    }
+
+                    foreach (var file in files)
+                    {
+                        if (file.Name.StartsWith("export_planwizyty_" + DateTime.Now.ToString("yyyyMMdd")) && !file.IsDirectory)
+                        {
+                            using (Stream fileStream = File.Create(Path.Combine(localDownloadPath, file.Name)))
+                            {
+                                client.DownloadFile(file.FullName, fileStream);
+                                ZapiszLog("Pomyślnie pobrano plik " + file.Name);
+                            }
+                        }
+                    }
+                    client.Disconnect();
+                }
+                catch (Exception ex)
+                {
+                    client.Disconnect();
+                    ZapiszLog("Wystąpił błąd przy pobieraniu plików " + ex);
+                }
+            }
+        }
+
+        public void UtworzZadaniaGoNet()
+        {
+            try
+            {
+                string filePath = Path.Combine(localDownloadPath, $"export_planwizyty_{DateTime.Now:yyyyMMdd}.csv");
+                if (Directory.Exists(localDownloadPath) && File.Exists(filePath))
+                {
+                    //Archiwizujemy zadania, gdy plik na sftp zostal wyslany w inny dzien niz piatek (czyli zostal wyslany plik z priorytetami)
+                    if (System.DateTime.Now.DayOfWeek.ToString() != "Friday")
+                    {
+                        PunktTrasowy.ArchiwizujZadania();
+                    }
+
+                    StreamReader reader = null;
+                    reader = new StreamReader(File.OpenRead(filePath));
+                    reader.ReadLine(); //Pomijamy 1szy wiersz z headerami
+                    while (!reader.EndOfStream)
+                    {
+                        // Czytanie pliku CSV i tworzenie obiektu PunktTrasowy
+                        using (PunktTrasowy punkt = new PunktTrasowy())
+                        {
+                            var line = reader.ReadLine();
+                            var values = line.Split(';');
+                            int i = 0;
+                            foreach (var v in values)
+                            {
+                                if (i == 0) { punkt.Data = v; }
+                                if (i == 1) { punkt.IdPh = Convert.ToInt32(v); }
+                                if (i == 3) { punkt.Kolejnosc = Convert.ToInt32(v); }
+                                if (i == 4) { punkt.IdKlient = Convert.ToInt32(v); }
+                                if (i == 5) { punkt.NazwaKlient = v; }
+                                if (i == 6) { punkt.GodzinaRozpoczecia = v; }
+                                if (i == 7) { punkt.CzasWizyty = Convert.ToInt32(v); }
+                                i++;
+                            }
+                            // Jeśli plik nie został pobrany w piątek (czyli jest to plik priorytetowy) to tworzymy zadania na każdy wierz w pliku
+                            if (System.DateTime.Now.DayOfWeek.ToString() != "Friday")
+                            {
+                                punkt.ZalozZadanie();
+                            }
+                            else //Jeśli plik został pobrany w piątek, to zakładamy zadania tylko na tydzień drugi z pliku
+                            {
+                                if (DateTime.ParseExact(punkt.Data, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture) >= DateTime.Now.AddDays(6) && DateTime.ParseExact(punkt.Data, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture) <= DateTime.Now.AddDays(13))
+                                {
+                                    punkt.ZalozZadanie();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) { ZapiszLog("Wystąpił błąd w tworzeniu zadania w GoNet " + ex.ToString()); }
+        }
+
         public void ZapiszLog(string tekst)
         {
             DateTime today = DateTime.Today;
@@ -306,7 +417,7 @@ where (co.Atr_Wartosc is NULL or co.Atr_Wartosc = 'TAK') and KnA_AdresBank = 1 a
             }
             using (StreamWriter sw = new StreamWriter(pathFull, true))
             {
-                sw.WriteLine(DateTime.Now + " " + tekst);
+                sw.WriteLine(DateTime.Now + " " + tekst + "\n");
             }
         }
     }
