@@ -394,7 +394,7 @@ where (co.Atr_Wartosc is NULL or co.Atr_Wartosc = 'TAK') and KnA_AdresBank = 1 a
                             }
                             else //Jeśli plik został pobrany w piątek, to zakładamy zadania tylko na tydzień drugi z pliku
                             {
-                                if (DateTime.ParseExact(punkt.Data, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture) >= DateTime.Now.AddDays(6) && DateTime.ParseExact(punkt.Data, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture) <= DateTime.Now.AddDays(13))
+                                if (DateTime.ParseExact(punkt.Data, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture) >= DateTime.Now.AddDays(9) && DateTime.ParseExact(punkt.Data, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture) <= DateTime.Now.AddDays(15))
                                 {
                                     punkt.ZalozZadanie();
                                 }

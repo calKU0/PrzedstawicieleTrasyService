@@ -51,7 +51,7 @@ namespace GaskaPrzedstawicieleTrasyService
                 using (connection = new SqlConnection(ConfigurationManager.ConnectionStrings["GaskaConnectionString"].ConnectionString))
                 {
                     string query = @"
-                IF (SELECT TOP 1 TERMINZAKONCZENIA FROM OPENQUERY(gonet,'SELECT TERMINZAKONCZENIA FROM ZADANIA WHERE IDZLECENIODAWCY = 78 AND USUNIETY = 0 AND ARC = 0') ORDER BY TERMINZAKONCZENIA DESC) <= @dataZakonczenia OR NOT EXISTS (SELECT TOP 1 TERMINZAKONCZENIA FROM OPENQUERY(gonet,'SELECT TERMINZAKONCZENIA FROM ZADANIA WHERE IDZLECENIODAWCY = 78 AND USUNIETY = 0 AND ARC = 0') ORDER BY TERMINZAKONCZENIA DESC)
+                IF (SELECT TOP 1 TERMINZAKONCZENIA FROM OPENQUERY(gonet,'SELECT TERMINZAKONCZENIA FROM ZADANIA WHERE IDZLECENIODAWCY = 78 AND USUNIETY = 0 AND ARC = 0 AND IDZLECENIOBIORCY = " + IdPh + @"') ORDER BY TERMINZAKONCZENIA DESC) <= @dataZakonczenia OR NOT EXISTS (SELECT TOP 1 TERMINZAKONCZENIA FROM OPENQUERY(gonet,'SELECT TERMINZAKONCZENIA FROM ZADANIA WHERE IDZLECENIODAWCY = 78 AND USUNIETY = 0 AND ARC = 0 AND IDZLECENIOBIORCY = " + IdPh + @"') ORDER BY TERMINZAKONCZENIA DESC)
                 BEGIN
                 INSERT INTO openquery(gonet,'SELECT TERMINROZPOCZECIA
                 ,TERMINZAKONCZENIA
@@ -100,7 +100,7 @@ namespace GaskaPrzedstawicieleTrasyService
                 ,ROZLTIMER
                 FROM ZADANIA') 
                 SELECT @dataRozpoczecia, @dataZakonczenia,0,-1,0,ID,0,0,0,0,-1,5611,78,@idPH,'1899-12-29 00:00:00.0000000',0,@data,@idPH,0,-1,0,-1,'',0,1,-1,1,0,'1899-12-29 00:00:00.0000000','1899-12-29 00:00:00.0000000',0,-1,0.00,-1,-1,-1,-1,-1,1,NULL,NULL,-1,-1,-1,0
-                from openquery(gonet, 'SELECT k.ID ""ID"" FROM kontrahent k WHERE K.USUNIETY = 0 AND K.ARC = 0 AND k.SKROTNAZWY = ''" + NazwaKlient + "''') END";
+                from openquery(gonet, 'SELECT k.ID ""ID"" FROM kontrahent k WHERE K.USUNIETY = 0 AND K.ARC = 0 AND k.SKROTNAZWY = ''" + NazwaKlient.ToUpper() + "''') END";
 
                     connection.Open();
                     SqlCommand insertCommand = new SqlCommand(query, connection);
@@ -109,9 +109,15 @@ namespace GaskaPrzedstawicieleTrasyService
                     insertCommand.Parameters.AddWithValue("@idPH", IdPh);
                     insertCommand.Parameters.AddWithValue("@data", DateTime.Now.ToString(outputFormat));
                     //insertCommand.Parameters.AddWithValue("@nazwaKlient", nazwaKlient);
-                    insertCommand.ExecuteNonQuery();
-                    ZapiszLog($"Dodano zadanie o atrybutach: Data: {Data} idPH: {IdPh} Kolejnosc: {Kolejnosc} idKlient: {IdKlient} Nazwa klienta: {NazwaKlient} Godzina wizyty: {GodzinaRozpoczecia} Czas wizyty: {CzasWizyty}");
-                    connection.Close();
+                    int rowsAffected = insertCommand.ExecuteNonQuery();
+                    if (rowsAffected == 1)
+                    {
+                        ZapiszLog($"Dodano zadanie o atrybutach: Data: {Data} idPH: {IdPh} Kolejnosc: {Kolejnosc} idKlient: {IdKlient} Nazwa klienta: {NazwaKlient} Godzina wizyty: {GodzinaRozpoczecia} Czas wizyty: {CzasWizyty}");
+                    }
+                    else
+                    {
+                        ZapiszLog($"Nie założono zadania o atrybutach: Data: {Data} idPH: {IdPh} Kolejnosc: {Kolejnosc} idKlient: {IdKlient} Nazwa klienta: {NazwaKlient} Godzina wizyty: {GodzinaRozpoczecia} Czas wizyty: {CzasWizyty}");
+                    }
                 }
             }
             catch (Exception ex) { ZapiszLog($"Wystąpił problem z tworzeniem zadania o atrybutach: Data: {Data} idPH: {IdPh} Kolejnosc: {Kolejnosc} idKlient: {IdKlient} Nazwa klienta: {NazwaKlient} Godzina wizyty: {GodzinaRozpoczecia} Czas wizyty: {CzasWizyty} {ex}"); }
@@ -136,7 +142,6 @@ namespace GaskaPrzedstawicieleTrasyService
                     SqlCommand updateCommand = new SqlCommand(query, connection);
                     updateCommand.Parameters.AddWithValue("@data", DateTime.Now.ToString(outputFormat));
                     int liczbaZmian = updateCommand.ExecuteNonQuery();
-                    connection.Close();
                     
                     ZapiszLog($"Zarchiwizowano {liczbaZmian} zadań RoutePlus");
                 }
