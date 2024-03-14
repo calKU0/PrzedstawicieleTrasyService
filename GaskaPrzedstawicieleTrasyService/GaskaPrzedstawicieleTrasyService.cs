@@ -165,7 +165,7 @@ namespace GaskaPrzedstawicieleTrasyService
 	                                    AND KD.ARC = 0
 	                                    AND KO.USUNIETY = 0
 	                                    AND KO.ARC = 0
-                                        AND kh.IDMANAGERA in (51,58,59,68) -- Przedstawiciele handlowi
+                                        AND kh.IDMANAGERA in (82,58,59,81) -- Przedstawiciele handlowi
 	                                    AND cast(KO.DATAAKCJI as date) >= cast(''NOW'' as date) - 1 -- Data zamknięcia wczoraj
 										AND KO.IDTYPAKCJI = 4 -- Wizyta '
 	                                    )
@@ -203,8 +203,8 @@ knt_gidnumer as [Id Klient]
 ,knt_kodp as [Kod]
 ,knt_miasto as [Miejscowość]
 ,knt_ulica as [Ulica]
-,case when KtO_PrcNumer = 382 then 51
-when KtO_PrcNumer = 1491 then 68
+,case when KtO_PrcNumer = 1630 then 82
+when KtO_PrcNumer = 1631 then 81
 when KtO_PrcNumer = 1426 then 59
 else 58 end as [ID PH]
 ,ilo.atr_wartosc as [Ilość Odwiedzin]
@@ -224,8 +224,8 @@ kna_gidnumer as [Id Klient]
 ,kna_kodp as [Kod]
 ,kna_miasto as [Miejscowość]
 ,kna_ulica as [Ulica]
-,case when KtO_PrcNumer = 382 then 51
-when KtO_PrcNumer = 1491 then 68
+,case when KtO_PrcNumer = 1630 then 82
+when KtO_PrcNumer = 1631 then 81
 when KtO_PrcNumer = 1426 then 59
 else 58 end as [ID PH]
 ,ilo.atr_wartosc as [Ilość Odwiedzin]
@@ -238,7 +238,7 @@ join cdn.PrcKarty on Prc_GIDNumer=KtO_PrcNumer
 join cdn.atrybuty ilo on KnA_GIDNumer=ilo.Atr_ObiNumer and ilo.atr_atkid = 459 and ilo.Atr_Wartosc <> 0
 left join cdn.atrybuty co on KnA_GIDNumer=co.Atr_ObiNumer and co.atr_atkid = 470
 
-where (co.Atr_Wartosc is NULL or co.Atr_Wartosc = 'TAK') and KnA_AdresBank = 1 and KtO_PrcNumer in (1425,1426,1491,382)";
+where (co.Atr_Wartosc is NULL or co.Atr_Wartosc = 'TAK') and KnA_AdresBank = 1 and KtO_PrcNumer in (1425,1426,1631,1630)";
                     connection.Open();
                     SqlCommand selectcommand = new SqlCommand(query, connection);
                     using (SqlDataAdapter da = new SqlDataAdapter(selectcommand))
