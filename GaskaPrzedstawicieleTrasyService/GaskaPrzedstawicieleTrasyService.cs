@@ -211,11 +211,12 @@ else 58 end as [ID PH]
 
 from cdn.KntKarty
 join cdn.Rejony on REJ_Id = KnT_RegionCRM
-join cdn.KntOpiekun on REJ_Id=KtO_KntNumer and KtO_Glowny = 0 and KtO_PrcNumer in (1425,1426,1491,382)
+join cdn.KntOpiekun on REJ_Id=KtO_KntNumer and KtO_Glowny = 0 and KtO_PrcNumer in (1425,1426,1631,1630)
 join cdn.atrybuty ilo on Knt_GIDNumer=ilo.Atr_ObiNumer and ilo.Atr_OBITyp=32 AND ilo.Atr_OBISubLp=0 and ilo.atr_atkid = 459 and ilo.Atr_Wartosc <> 0 
 left join cdn.atrybuty co on Knt_GIDNumer=co.Atr_ObiNumer and co.Atr_OBITyp=32 AND co.Atr_OBISubLp=0 and co.atr_atkid = 470
 
 where co.Atr_Wartosc is NULL or co.Atr_Wartosc = 'TAK'
+
 UNION ALL
 select distinct
 kna_gidnumer as [Id Klient]
