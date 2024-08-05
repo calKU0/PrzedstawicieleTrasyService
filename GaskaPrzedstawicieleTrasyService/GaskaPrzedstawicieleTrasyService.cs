@@ -142,8 +142,8 @@ namespace GaskaPrzedstawicieleTrasyService
 ,[ID PH]
 ,Knt_GIDNumer as [ID Klient]
 ,Knt_Akronim as [Klient Nazwa]
-,cast([Data rozpoczecia] as time) as [Godzina rozpoczecia]
-,cast([Data zakonczenia] as time) as[Godzina zakonczenia]
+,replace(cast([Data rozpoczecia] as time),'.0000000','') as [Godzina rozpoczecia]
+,replace(cast([Data zakonczenia] as time),'.0000000','') as[Godzina zakonczenia]
 
                                     FROM OPENQUERY(gonet,
 	                                    'Select
@@ -164,8 +164,7 @@ namespace GaskaPrzedstawicieleTrasyService
 	                                    WHERE KD.USUNIETY = 0
 	                                    AND KD.ARC = 0
 	                                    AND KO.USUNIETY = 0
-	                                    AND KO.ARC = 0
-                                        AND kh.IDMANAGERA in (82,58,59,81) -- Przedstawiciele handlowi
+                                        AND o.ID in (82,58,59,81) -- Przedstawiciele handlowi
 	                                    AND cast(KO.DATAAKCJI as date) >= cast(''NOW'' as date) - 1 -- Data zamknięcia wczoraj
 										AND KO.IDTYPAKCJI = 4 -- Wizyta '
 	                                    )
